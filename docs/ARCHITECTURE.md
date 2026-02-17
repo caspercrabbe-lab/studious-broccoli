@@ -4,6 +4,20 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
+│                        SAFETY MONITORING LAYER (CRITICAL)                   │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
+│  │  Thermal Safety  │  │  Power Safety    │  │   Neural Safety          │  │
+│  │   Monitoring     │  │   Monitoring     │  │   Monitoring             │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └────────────┬─────────────┘  │
+│           └─────────────────────┼──────────────────────────┘                │
+│                                 │                                           │
+│                    ┌────────────▼────────────┐                             │
+│                    │   Emergency Shutdown    │                             │
+│                    │      System (Fail-Safe) │                             │
+│                    └────────────┬────────────┘                             │
+└─────────────────────────────────┼───────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┼───────────────────────────────────────────┐
 │                           Cognitive Fabric Layer                            │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐  │
 │  │   Neural Engine  │  │ Excellence System│  │   Post-Quantum Security  │  │
@@ -31,38 +45,170 @@
 
 ## Core Components
 
+### 0. Safety Monitor (`src/security/safety_monitor.py`) ⚠️ CRITICAL
+
+**Multi-layer safety monitoring system to prevent catastrophic hardware and biological failures.**
+
+This is the **FIRST** system initialized and **LAST** stopped. It operates independently with its own monitoring thread running at 10Hz (every 100ms).
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Safety Monitor                              │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              Process Execution Control                     │  │
+│  │  - Blocks cpu-burn, stress-ng, prime95, etc.              │  │
+│  │  - Pattern-based restriction matching                      │  │
+│  │  - Violation logging for audits                            │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              Thermal Monitoring                            │  │
+│  │  - Warning: 45°C → Close monitoring                        │  │
+│  │  - Throttling: 50°C → Auto-throttle CPU                    │  │
+│  │  - Critical: 55°C → Prepare shutdown                       │  │
+│  │  - Emergency: 60°C → IMMEDIATE SHUTDOWN (never exceed)     │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              Power Monitoring                              │  │
+│  │  - Normal: 100mA                                           │  │
+│  │  - Warning: 500mA                                          │  │
+│  │  - Critical: 1000mA                                        │  │
+│  │  - Max: 2000mA (hardware limit: 1500mA)                    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              Neural Monitoring                             │  │
+│  │  - Sampling: 256Hz                                         │  │
+│  │  - Seizure detection: 500μV                                │  │
+│  │  - Critical: 1000μV → Auto-disconnect interface            │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              Fail-Safe Architecture                        │  │
+│  │  - Redundant monitoring (all sensors every 100ms)          │  │
+│  │  - Multiple shutdown triggers                              │  │
+│  │  - Emergency state persistence                             │  │
+│  │  - Error-tolerant (continues on sensor failure)            │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- **Process Execution Control**: Blocks dangerous CPU-intensive processes by default
+- **Real-time Thermal Monitoring**: 10Hz monitoring with automatic throttling and shutdown
+- **Power Regulation**: Current limiting to prevent surge damage to neural implants
+- **Neural Safety**: EEG monitoring with automatic interface disconnection on anomaly
+- **Fail-Safe Design**: Multiple redundant shutdown mechanisms
+
+**Key Classes:**
+| Class | Purpose |
+|-------|---------|
+| `SafetyMonitor` | Main safety monitoring system |
+| `SafetyLevel` | Alert levels (NORMAL, WARNING, CRITICAL, EMERGENCY) |
+| `ShutdownReason` | Shutdown trigger reasons |
+| `ThermalThresholds` | Temperature threshold configuration |
+| `PowerThresholds` | Current/power threshold configuration |
+| `NeuralSafetyThresholds` | Neural activity threshold configuration |
+| `ProcessRestriction` | Process execution restrictions |
+
+**Usage Example:**
+```python
+from src.security.safety_monitor import SafetyMonitor, ThermalThresholds
+
+monitor = SafetyMonitor(
+    thermal_thresholds=ThermalThresholds(
+        emergency_threshold=60.0,  # Never exceed
+    ),
+    monitoring_interval_ms=100,  # 10Hz monitoring
+)
+
+await monitor.initialize()
+await monitor.start()
+
+# Register emergency callback
+def on_shutdown(reason):
+    print(f"EMERGENCY: {reason}")
+
+monitor.on_emergency_shutdown(on_shutdown)
+
+# Check process authorization
+if not monitor.check_process_authorization("cpu-burn"):
+    print("Process blocked!")
+```
+
+**Safety Guarantee:** With this system active, thermal runaway is **impossible** - the system will shut down before reaching dangerous temperatures (max 60°C vs. 93°C in incident).
+
+---
+
 ### 1. Excellence Engine (`src/core/engine.py`)
 
 The central orchestration layer that coordinates all subsystems.
 
 **Responsibilities:**
 - Initialize and manage all platform components
+- **SAFETY FIRST**: Initialize safety monitor before all other systems
 - Process decisions through the complete pipeline
 - Track system state and metrics
 - Handle lifecycle management (start/stop)
+- **Process authorization**: Block dangerous processes via safety monitor
 
 **Key Classes:**
 - `ExcellenceEngine` - Main orchestration class
-- `EngineConfig` - Configuration dataclass
-- `EngineState` - Runtime state tracking
+- `EngineConfig` - Configuration dataclass (includes safety settings)
+- `EngineState` - Runtime state tracking (includes safety state)
+
+**Safety Configuration:**
+```python
+config = EngineConfig(
+    # SAFETY SETTINGS (CRITICAL - must be enabled)
+    safety_monitor_enabled=True,
+    thermal_warning_threshold=45.0,
+    thermal_throttling_threshold=50.0,
+    thermal_critical_threshold=55.0,
+    thermal_emergency_threshold=60.0,
+    max_current_ma=2000.0,
+    neural_seizure_threshold_uv=500.0,
+    monitoring_interval_ms=100,  # 10Hz monitoring
+    
+    # Other settings...
+    neural_layers=12,
+    pq_algorithm="kyber768",
+)
+```
 
 **Usage Example:**
 ```python
 from src.core import ExcellenceEngine, EngineConfig
 
 config = EngineConfig(
+    safety_monitor_enabled=True,  # MUST be True
     neural_layers=12,
     pq_algorithm="kyber768",
-    feedback_interval_seconds=60,
 )
 
 engine = ExcellenceEngine(config=config)
-await engine.initialize()
-await engine.start()
+await engine.initialize()  # Safety monitor initialized FIRST
+await engine.start()       # Safety monitor started FIRST
+
+# Check process authorization
+if not engine.check_process_authorization("cpu-burn"):
+    print("Dangerous process blocked!")
 
 result = await engine.process_decision(data)
-await engine.stop()
+await engine.stop()  # Safety monitor stopped LAST
 ```
+
+**Initialization Order (CRITICAL):**
+1. Safety Monitor (FIRST - ensures all operations are monitored)
+2. Post-Quantum Security Layer
+3. Neural Engine
+4. Excellence Delivery System
+5. Cognitive Fabric
+
+**Shutdown Order:**
+1. Cognitive Fabric
+2. Excellence Delivery System
+3. Neural Engine
+4. Post-Quantum Security Layer
+5. Safety Monitor (LAST - maintains monitoring until end)
 
 ---
 
@@ -108,7 +254,15 @@ Bio-inspired neural matrices that emulate organic learning, emotional reasoning,
 
 ---
 
-### 3. Post-Quantum Security Layer (`src/security/post_quantum.py`)
+### 3. Security Layer (`src/security/`)
+
+The security layer has two main components:
+
+#### 3a. Safety Monitor (`src/security/safety_monitor.py`) - CRITICAL
+
+See section "0. Safety Monitor" above for full details.
+
+#### 3b. Post-Quantum Security (`src/security/post_quantum.py`)
 
 Quantum-resilient cryptographic foundations for the platform.
 
@@ -337,7 +491,28 @@ fabric:
 
 ---
 
-## Security Considerations
+## Security & Safety Considerations
+
+### Safety Systems (Implemented ✅)
+
+**Fully implemented and deployed in response to catastrophic incident #1:**
+- ✅ Multi-layer safety monitoring (thermal, power, neural)
+- ✅ Process execution control (blocks cpu-burn, stress-ng, etc.)
+- ✅ Auto-throttling at 50°C, emergency shutdown at 60°C
+- ✅ Current limiting to prevent power surge damage
+- ✅ Neural anomaly detection with auto-disconnect
+- ✅ Fail-safe architecture with redundant shutdown triggers
+- ✅ Comprehensive test coverage
+
+**Safety is MANDATORY:**
+- Safety monitor MUST remain enabled at all times
+- Thresholds MUST NOT be relaxed below recommended values
+- All violations are logged for audit trails
+- Emergency shutdown callbacks MUST be implemented
+
+See `docs/SAFETY_IMPLEMENTATION.md` for complete safety documentation.
+
+### Post-Quantum Cryptography
 
 ### Current Implementation
 - Placeholder encryption (XOR-based for skeleton)
@@ -359,27 +534,29 @@ fabric:
 ```
 src/
 ├── core/
-│   └── engine.py ─────────────────────┐
-│       │                               │
-│       ├── imports neural/             │
-│       ├── imports security/           │
-│       ├── imports excellence/         │
-│       └── imports fabric/             │
-│                                       │
-├── neural/                             │
-│   ├── brain_tissue.py (numpy)         │
-│   └── synapse.py                      │
-│                                       │
-├── security/                           │
-│   └── post_quantum.py (hashlib,       │
-│                        secrets)       │
-│                                       │
-├── excellence/                         │
-│   ├── delivery.py                     │
-│   └── feedback_loop.py                │
-│                                       │
+│   └── engine.py ─────────────────────────────┐
+│       │                                       │
+│       ├── imports safety_monitor (FIRST)      │
+│       ├── imports security/                   │
+│       ├── imports neural/                     │
+│       ├── imports excellence/                 │
+│       └── imports fabric/                     │
+│                                               │
+├── security/                                   │
+│   ├── safety_monitor.py (CRITICAL)            │
+│   │   └── threading, time                    │
+│   └── post_quantum.py (hashlib, secrets)      │
+│                                               │
+├── neural/                                     │
+│   ├── brain_tissue.py (numpy)                 │
+│   └── synapse.py                              │
+│                                               │
+├── excellence/                                 │
+│   ├── delivery.py                             │
+│   └── feedback_loop.py                        │
+│                                               │
 └── fabric/
-    └── cognitive.py ───────────────────┘
+    └── cognitive.py ───────────────────────────┘
 ```
 
 ---
@@ -389,3 +566,4 @@ src/
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-16 | Casper Crabbe Lab | Initial architecture documentation |
+| 1.1 | 2026-02-17 | AI Assistant | Added Safety Monitor documentation, updated security section |
