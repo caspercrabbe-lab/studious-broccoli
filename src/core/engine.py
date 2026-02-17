@@ -29,6 +29,16 @@ class EngineConfig:
     pq_algorithm: str = "kyber768"  # CRYSTALS-Kyber variant
     key_rotation_hours: int = 24
 
+    # SAFETY SETTINGS (CRITICAL - prevents catastrophic failures)
+    safety_monitor_enabled: bool = True
+    thermal_warning_threshold: float = 45.0  # °C
+    thermal_throttling_threshold: float = 50.0  # °C
+    thermal_critical_threshold: float = 55.0  # °C
+    thermal_emergency_threshold: float = 60.0  # °C
+    max_current_ma: float = 2000.0  # mA - absolute maximum
+    neural_seizure_threshold_uv: float = 500.0  # μV
+    monitoring_interval_ms: int = 100  # 100ms = 10Hz monitoring
+
     # Excellence delivery settings
     feedback_interval_seconds: int = 60
     optimization_threshold: float = 0.05
@@ -48,6 +58,11 @@ class EngineState:
     decisions_made: int = 0
     excellence_score: float = 0.0
     last_optimization: Optional[datetime] = None
+    
+    # Safety state
+    safety_active: bool = False
+    safety_emergency: bool = False
+    last_safety_violation: Optional[datetime] = None
 
 
 class ExcellenceEngine:
@@ -78,6 +93,7 @@ class ExcellenceEngine:
         self._security_layer = None
         self._excellence_system = None
         self._cognitive_fabric = None
+        self._safety_monitor = None
 
         logger.info("ExcellenceEngine initialized with config: %s", self.config)
 
@@ -86,12 +102,49 @@ class ExcellenceEngine:
         Initialize all subsystems.
 
         This method sets up:
-        1. Post-quantum security layer
-        2. Synthetic brain-tissue neural engine
-        3. Continuous excellence delivery system
-        4. Cognitive fabric
+        1. Safety monitoring system (CRITICAL - prevents catastrophic failures)
+        2. Post-quantum security layer
+        3. Synthetic brain-tissue neural engine
+        4. Continuous excellence delivery system
+        5. Cognitive fabric
         """
         logger.info("Initializing Excellence Engine subsystems...")
+
+        # SAFETY FIRST: Initialize safety monitor before anything else
+        if self.config.safety_monitor_enabled:
+            from ..security.safety_monitor import (
+                SafetyMonitor,
+                ThermalThresholds,
+                PowerThresholds,
+                NeuralSafetyThresholds,
+            )
+
+            thermal_thresholds = ThermalThresholds(
+                warning_threshold=self.config.thermal_warning_threshold,
+                throttling_threshold=self.config.thermal_throttling_threshold,
+                critical_threshold=self.config.thermal_critical_threshold,
+                emergency_threshold=self.config.thermal_emergency_threshold,
+            )
+
+            neural_thresholds = NeuralSafetyThresholds(
+                seizure_threshold_uv=self.config.neural_seizure_threshold_uv,
+            )
+
+            self._safety_monitor = SafetyMonitor(
+                thermal_thresholds=thermal_thresholds,
+                power_thresholds=PowerThresholds(
+                    max_current_ma=self.config.max_current_ma,
+                ),
+                neural_thresholds=neural_thresholds,
+                monitoring_interval_ms=self.config.monitoring_interval_ms,
+            )
+            await self._safety_monitor.initialize()
+            logger.info("Safety monitor initialized - CRITICAL SAFETY SYSTEM ACTIVE")
+
+            # Register emergency shutdown callback
+            self._safety_monitor.on_emergency_shutdown(self._on_emergency_shutdown)
+        else:
+            logger.warning("Safety monitor DISABLED - NOT RECOMMENDED")
 
         # Initialize security layer first (foundation)
         from ..security.post_quantum import PostQuantumSecurity
@@ -146,6 +199,12 @@ class ExcellenceEngine:
         self.state.is_running = True
         self.state.started_at = datetime.utcnow()
 
+        # Start safety monitor FIRST (must be active before other systems)
+        if self._safety_monitor:
+            await self._safety_monitor.start()
+            self.state.safety_active = True
+            logger.info("Safety monitor STARTED - all operations monitored")
+
         # Start all subsystems
         await self._security_layer.start()
         await self._neural_engine.start()
@@ -162,12 +221,17 @@ class ExcellenceEngine:
 
         logger.info("Stopping Excellence Engine...")
         self.state.is_running = False
+        self.state.safety_active = False
 
         # Stop all subsystems
         await self._cognitive_fabric.stop()
         await self._excellence_system.stop()
         await self._neural_engine.stop()
         await self._security_layer.stop()
+
+        # Stop safety monitor LAST (maintains monitoring until end)
+        if self._safety_monitor:
+            await self._safety_monitor.stop()
 
         logger.info("Excellence Engine stopped")
 
@@ -222,6 +286,27 @@ class ExcellenceEngine:
         """Get current engine state."""
         return self.state
 
+    def _on_emergency_shutdown(self, reason: Any) -> None:
+        """Handle emergency shutdown from safety monitor."""
+        logger.critical("EMERGENCY SHUTDOWN RECEIVED: %s", reason)
+        self.state.safety_emergency = True
+        self.state.last_safety_violation = datetime.utcnow()
+        # Note: The safety monitor handles the actual shutdown
+
+    def check_process_authorization(self, process_name: str) -> bool:
+        """
+        Check if a process is authorized to run.
+
+        Args:
+            process_name: Name of the process to check
+
+        Returns:
+            True if authorized, False if restricted
+        """
+        if self._safety_monitor:
+            return self._safety_monitor.check_process_authorization(process_name)
+        return True  # If no safety monitor, allow (not recommended)
+
     def get_metrics(self) -> Dict[str, Any]:
         """
         Get comprehensive engine metrics.
@@ -229,7 +314,7 @@ class ExcellenceEngine:
         Returns:
             Dictionary containing metrics from all subsystems
         """
-        return {
+        metrics = {
             "engine": {
                 "is_running": self.state.is_running,
                 "uptime_seconds": (
@@ -238,6 +323,9 @@ class ExcellenceEngine:
                 "decisions_made": self.state.decisions_made,
                 "excellence_score": self.state.excellence_score,
             },
+            "safety": self._safety_monitor.get_metrics()
+            if self._safety_monitor
+            else {"enabled": False},
             "neural": self._neural_engine.get_metrics()
             if self._neural_engine
             else {},
@@ -251,3 +339,4 @@ class ExcellenceEngine:
             if self._cognitive_fabric
             else {},
         }
+        return metrics
