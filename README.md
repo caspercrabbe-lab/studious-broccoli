@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/ci.yml/badge.svg)](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/codeql.yml/badge.svg)](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/codeql.yml)
+[![Coverage](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/coverage.yml/badge.svg)](https://github.com/caspercrabbe-lab/studious-broccoli/actions/workflows/coverage.yml)
 
 ---
 

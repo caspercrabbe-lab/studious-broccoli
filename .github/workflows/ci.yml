@@ -27,9 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Install coverage
+        run: pip install coverage[toml]>=7.0.0
+
+      - name: Run tests with coverage
         run: |
-          pytest tests/ -v --tb=short
+          coverage run -m pytest tests/ -v --tb=short
+          coverage report
 
   lint:
     runs-on: ubuntu-latest
